@@ -1,8 +1,8 @@
 package main
 
 import (
-        "bufio"
-        "crypto/sha1"
+	"bufio"
+	"crypto/sha1"
 	"flag"
 	"fmt"
 	"golang.org/x/net/html"
@@ -59,7 +59,6 @@ func jsSource(scriptUrl string, htmlDir string, rootDir string) string {
 	return string(dat)
 }
 
-
 func createScriptNodeWithSrc(s string) *html.Node {
 	doc, _ := html.Parse(strings.NewReader("<script src=\"" + s + "\"></script>"))
 	nodes := getScriptNodes(doc)
@@ -67,7 +66,6 @@ func createScriptNodeWithSrc(s string) *html.Node {
 	scriptNode.Parent.RemoveChild(scriptNode)
 	return scriptNode
 }
-
 
 // for each node
 //     if it is a <script src="foo.js"></script> tag in the <head> section:
@@ -120,22 +118,23 @@ func main() {
 
 	// Get the jsBytes and their SHA-1 fingerprint.
 	catSource := strings.Join(jsSources, "\n\n\n")
-	fingerprint := fmt.Sprintf("%x", sha1.Sum([]byte(catSource)))
 	jsBytes := []byte(catSource)
+	fingerprint := fmt.Sprintf("%x", sha1.Sum(jsBytes))
 
 	// Insert the new script tag, with the new JS file name
 	jsFileName := fingerprint + ".js"
 	headNode.AppendChild(createScriptNodeWithSrc(jsFileName))
 
-	// Calculate the destination dir for the HTML and JS
+	// Calculate the destination dir for the HTML and JS, and create it if needed
 	destDir, err := filepath.Rel(srcRoot, filepath.Dir(htmlPath))
 	check(err)
 	destDir = filepath.Join(destRoot, destDir)
+	check(os.MkdirAll(destDir, 0777))
 
 	// Write the JS file.
 	jsDestPath := filepath.Join(destDir, jsFileName)
 	fmt.Println("jsDestPath:", jsDestPath)
-    	err = ioutil.WriteFile(jsDestPath, jsBytes, 0644)
+	err = ioutil.WriteFile(jsDestPath, jsBytes, 0644)
 	check(err)
 
 	// Write the HTML file.
@@ -143,7 +142,7 @@ func main() {
 	fmt.Println("htmlDestPath:", htmlDestPath)
 	f, err := os.Create(htmlDestPath)
 	check(err)
-        defer f.Close()
+	defer f.Close()
 	w := bufio.NewWriter(f)
 	err = html.Render(w, doc)
 	w.Flush()
