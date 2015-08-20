@@ -67,29 +67,7 @@ func createScriptNodeWithSrc(s string) *html.Node {
 	return scriptNode
 }
 
-// for each node
-//     if it is a <script src="foo.js"></script> tag in the <head> section:
-//       Open the JS file using the srcroot and the script tag's src attrib.
-//       Append that JS file's contents to the in-mem catted script.
-//       Remove the script tag's nodes.
-// Get the SHA1 fingerprint (like abc123) of the final catted script.
-// Insert a <head> child <script src="adb123.js"></script>
-// Write the script content to abc123.js in the dest tree.
-// Write the HTML file to the dest tree
-func main() {
-	htmlPathFlag := flag.String("htmlpath", "", "The file path to the HTML file with script tags")
-	srcRootFlag := flag.String("srcroot", "", "The root of the source file tree")
-	destRootFlag := flag.String("destroot", "", "The root of the re-written file tree")
-	flag.Parse()
-
-	// Make all paths absolute
-	htmlPath, err := filepath.Abs(*htmlPathFlag)
-	check(err)
-	srcRoot, err := filepath.Abs(*srcRootFlag)
-	check(err)
-	destRoot, err := filepath.Abs(*destRootFlag)
-	check(err)
-
+func processHtml(srcRoot string, destRoot string, htmlPath string) {
 	// Parse the HTML nodes.
 	htmlFile, err := os.Open(htmlPath)
 	check(err)
@@ -103,7 +81,6 @@ func main() {
 	for _, n := range scriptNodes {
 		for _, attr := range n.Attr {
 			if attr.Key == "src" {
-				//fmt.Println(attr.Val)
 				scriptPath := attr.Val
 				jsSources = append(jsSources, jsSource(scriptPath, htmlDir, srcRoot))
 			}
@@ -133,17 +110,51 @@ func main() {
 
 	// Write the JS file.
 	jsDestPath := filepath.Join(destDir, jsFileName)
-	fmt.Println("jsDestPath:", jsDestPath)
+	fmt.Println("writing JS:  ", jsDestPath)
 	err = ioutil.WriteFile(jsDestPath, jsBytes, 0644)
 	check(err)
 
 	// Write the HTML file.
 	htmlDestPath := filepath.Join(destDir, filepath.Base(htmlPath))
-	fmt.Println("htmlDestPath:", htmlDestPath)
+	fmt.Println("writing HTML:", htmlDestPath)
 	f, err := os.Create(htmlDestPath)
 	check(err)
 	defer f.Close()
 	w := bufio.NewWriter(f)
 	err = html.Render(w, doc)
 	w.Flush()
+}
+
+// for each node
+//     if it is a <script src="foo.js"></script> tag in the <head> section:
+//       Open the JS file using the srcroot and the script tag's src attrib.
+//       Append that JS file's contents to the in-mem catted script.
+//       Remove the script tag's nodes.
+// Get the SHA1 fingerprint (like abc123) of the final catted script.
+// Insert a <head> child <script src="adb123.js"></script>
+// Write the script content to abc123.js in the dest tree.
+// Write the HTML file to the dest tree
+func main() {
+	//	htmlPathFlag := flag.String("htmlpath", "", "The file path to the HTML file with script tags")
+	srcRootFlag := flag.String("srcroot", "ERROR", "The root of the source file tree")
+	destRootFlag := flag.String("destroot", "ERROR", "The root of the re-written file tree")
+	flag.Parse()
+
+	if *srcRootFlag == "ERROR" || *destRootFlag == "ERROR" {
+		panic("Forgot srcRootFlag or destRootFlag?")
+	}
+	// Make all paths absolute
+	srcRoot, err := filepath.Abs(*srcRootFlag)
+	check(err)
+	destRoot, err := filepath.Abs(*destRootFlag)
+	check(err)
+
+	htmlPaths := os.Args[3:]
+	for _, htmlPath := range htmlPaths {
+		htmlPath, err := filepath.Abs(htmlPath)
+		fmt.Println("reading", htmlPath)
+		check(err)
+		processHtml(srcRoot, destRoot, htmlPath)
+		fmt.Println()
+	}
 }
