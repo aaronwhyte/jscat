@@ -67,7 +67,15 @@ func createScriptNodeWithSrc(s string) *html.Node {
 	return scriptNode
 }
 
-func processHtml(srcRoot string, destRoot string, htmlPath string) {
+func createScriptNodeWithInlineCode(s string) *html.Node {
+	doc, _ := html.Parse(strings.NewReader("<script>\n" + s + "\n</script>"))
+	nodes := getScriptNodes(doc)
+	scriptNode := nodes[0]
+	scriptNode.Parent.RemoveChild(scriptNode)
+	return scriptNode
+}
+
+func processHtml(srcRoot string, inline bool, destRoot string, htmlPath string) {
 	// Parse the HTML nodes.
 	htmlFile, err := os.Open(htmlPath)
 	check(err)
@@ -93,27 +101,33 @@ func processHtml(srcRoot string, destRoot string, htmlPath string) {
 		n.Parent.RemoveChild(n)
 	}
 
-	// Get the jsBytes and their SHA-1 fingerprint.
+  // New JS source
 	catSource := strings.Join(jsSources, "\n\n\n")
-	jsBytes := []byte(catSource)
-	fingerprint := fmt.Sprintf("%x", sha1.Sum(jsBytes))
 
-	// Insert the new script tag, with the new JS file name
-	jsFileName := fingerprint + ".js"
-	headNode.AppendChild(createScriptNodeWithSrc(jsFileName))
 
-	// Calculate the destination dir for the HTML and JS, and create it if needed
-	destDir, err := filepath.Rel(srcRoot, filepath.Dir(htmlPath))
-	check(err)
-	destDir = filepath.Join(destRoot, destDir)
-	check(os.MkdirAll(destDir, 0777))
+  // Calculate the destination dir for the HTML and JS, and create it if needed
+  destDir, err := filepath.Rel(srcRoot, filepath.Dir(htmlPath))
+  check(err)
+  destDir = filepath.Join(destRoot, destDir)
+  check(os.MkdirAll(destDir, 0777))
 
-	// Write the JS file.
-	jsDestPath := filepath.Join(destDir, jsFileName)
-	fmt.Println("writing JS:  ", jsDestPath)
-	err = ioutil.WriteFile(jsDestPath, jsBytes, 0644)
-	check(err)
+  if inline {
+    headNode.AppendChild(createScriptNodeWithInlineCode(catSource))
+  } else {
+    // Get the jsBytes and their SHA-1 fingerprint.
+    jsBytes := []byte(catSource)
+    fingerprint := fmt.Sprintf("%x", sha1.Sum(jsBytes))
 
+    // Insert the new script tag, with the new JS file name
+    jsFileName := fingerprint + ".js"
+    headNode.AppendChild(createScriptNodeWithSrc(jsFileName))
+
+    // Write the JS file.
+    jsDestPath := filepath.Join(destDir, jsFileName)
+    fmt.Println("writing JS:  ", jsDestPath)
+    err = ioutil.WriteFile(jsDestPath, jsBytes, 0644)
+    check(err)
+  }
 	// Write the HTML file.
 	htmlDestPath := filepath.Join(destDir, filepath.Base(htmlPath))
 	fmt.Println("writing HTML:", htmlDestPath)
@@ -138,23 +152,29 @@ func main() {
 	//	htmlPathFlag := flag.String("htmlpath", "", "The file path to the HTML file with script tags")
 	srcRootFlag := flag.String("srcroot", "ERROR", "The root of the source file tree")
 	destRootFlag := flag.String("destroot", "ERROR", "The root of the re-written file tree")
+	inlineJsFlag := flag.Bool("inline_js", false, "Whether to inline the JS, or write it to a fingerprinted source file.")
 	flag.Parse()
 
-	if *srcRootFlag == "ERROR" || *destRootFlag == "ERROR" {
-		panic("Forgot srcRootFlag or destRootFlag?")
+	if *srcRootFlag == "ERROR" {
+		panic("Forgot srcroot flag?")
 	}
+	if *destRootFlag == "ERROR" {
+		panic("Forgot destroot flag?")
+	}
+	var inline = *inlineJsFlag
+
 	// Make all paths absolute
 	srcRoot, err := filepath.Abs(*srcRootFlag)
 	check(err)
-	destRoot, err := filepath.Abs(*destRootFlag)
-	check(err)
+  destRoot, err := filepath.Abs(*destRootFlag)
+  check(err)
 
-	htmlPaths := os.Args[3:]
+	htmlPaths := os.Args[(flag.NFlag() + 1):]
 	for _, htmlPath := range htmlPaths {
 		htmlPath, err := filepath.Abs(htmlPath)
 		fmt.Println("reading", htmlPath)
 		check(err)
-		processHtml(srcRoot, destRoot, htmlPath)
+		processHtml(srcRoot, inline, destRoot, htmlPath)
 		fmt.Println()
 	}
 }
